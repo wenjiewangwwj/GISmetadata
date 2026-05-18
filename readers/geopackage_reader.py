@@ -18,13 +18,23 @@ class GeoPackageReader(BaseGISReader):
     @staticmethod
     def list_layers(file_path: str) -> list[str]:
         try:
-            import fiona
+            import pyogrio
         except ImportError as exc:
-            raise ReaderError("Fiona is required to list GeoPackage layers.") from exc
+            raise ReaderError("Pyogrio is required to list GeoPackage layers.") from exc
         try:
-            return list(fiona.listlayers(file_path))
+            layers = pyogrio.list_layers(file_path)
         except Exception as exc:
             raise ReaderError(f"Unable to list GeoPackage layers: {exc}") from exc
+        names = []
+        for layer in layers:
+            if isinstance(layer, str):
+                names.append(layer)
+            else:
+                try:
+                    names.append(str(layer[0]))
+                except (TypeError, IndexError):
+                    names.append(str(layer))
+        return names
 
     def extract_metadata(self, file_path: str, **kwargs) -> dict:
         try:
