@@ -213,6 +213,7 @@ def resolve_reviewed_values(metadata: dict[str, Any]) -> dict[str, Any]:
             "Needs review",
         ),
         "lineage": first_text(review.get("lineage"), ai_draft.get("lineage_draft"), "Needs review"),
+        "bbox": resolve_bbox(metadata, review),
         "temporal_start": iso_date(
             first_text(review.get("temporal_start"), metadata.get("date_range", {}).get("start")),
             "",
@@ -320,7 +321,7 @@ def add_data_quality(root: etree._Element, values: dict[str, Any]) -> None:
 
 
 def add_extent(parent: etree._Element, metadata: dict[str, Any], values: dict[str, Any]) -> None:
-    bbox = metadata.get("bbox", {})
+    bbox = values.get("bbox", {})
     has_bbox = all(bbox.get(key) is not None for key in ("west", "south", "east", "north"))
     if not has_bbox and not (values.get("temporal_start") or values.get("temporal_end")):
         return
@@ -372,6 +373,27 @@ def first_text(*values: Any) -> str:
         if text:
             return text
     return ""
+
+
+def resolve_bbox(metadata: dict[str, Any], review: dict[str, Any]) -> dict[str, float | None]:
+    extracted_bbox = metadata.get("bbox", {})
+    return {
+        "west": first_float(review.get("bbox_west"), extracted_bbox.get("west")),
+        "east": first_float(review.get("bbox_east"), extracted_bbox.get("east")),
+        "south": first_float(review.get("bbox_south"), extracted_bbox.get("south")),
+        "north": first_float(review.get("bbox_north"), extracted_bbox.get("north")),
+    }
+
+
+def first_float(*values: Any) -> float | None:
+    for value in values:
+        if value in ("", None):
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def default_keywords(metadata: dict[str, Any]) -> list[str]:

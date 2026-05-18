@@ -22,6 +22,10 @@ REQUIRED_XPATHS = {
     "metadata contact individual": "mdContact/rpIndName",
     "metadata contact position": "mdContact/rpPosName",
     "metadata contact role": "mdContact/role/RoleCd",
+    "bounding box west": "dataIdInfo/dataExt/geoEle/GeoBndBox/westBL",
+    "bounding box east": "dataIdInfo/dataExt/geoEle/GeoBndBox/eastBL",
+    "bounding box south": "dataIdInfo/dataExt/geoEle/GeoBndBox/southBL",
+    "bounding box north": "dataIdInfo/dataExt/geoEle/GeoBndBox/northBL",
 }
 
 
