@@ -1,1 +1,1 @@
-"""ISO 19139 XML generation and validation helpers."""
+"""ArcGIS metadata XML generation and validation helpers."""

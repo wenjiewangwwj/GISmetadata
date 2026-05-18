@@ -2,24 +2,26 @@ from __future__ import annotations
 
 from lxml import etree
 
-from iso19139.xml_builder import NS
-
 
 REQUIRED_XPATHS = {
-    "fileIdentifier": "gmd:fileIdentifier/gco:CharacterString",
-    "language": "gmd:language",
-    "characterSet": "gmd:characterSet",
-    "hierarchyLevel": "gmd:hierarchyLevel",
-    "contact": "gmd:contact/gmd:CI_ResponsibleParty",
-    "dateStamp": "gmd:dateStamp/gco:Date",
-    "metadataStandardName": "gmd:metadataStandardName/gco:CharacterString",
-    "metadataStandardVersion": "gmd:metadataStandardVersion/gco:CharacterString",
-    "referenceSystemInfo": "gmd:referenceSystemInfo",
-    "identificationInfo": "gmd:identificationInfo/gmd:MD_DataIdentification",
-    "citation title": "gmd:identificationInfo//gmd:CI_Citation/gmd:title/gco:CharacterString",
-    "abstract": "gmd:identificationInfo//gmd:abstract/gco:CharacterString",
-    "distributionInfo": "gmd:distributionInfo/gmd:MD_Distribution",
-    "dataQualityInfo": "gmd:dataQualityInfo/gmd:DQ_DataQuality",
+    "ArcGIS metadata root": "/metadata",
+    "item title": "dataIdInfo/idCitation/resTitle",
+    "summary / purpose": "dataIdInfo/idPurp",
+    "description / abstract": "dataIdInfo/idAbs",
+    "tags": "dataIdInfo/searchKeys/keyword",
+    "topic categories": "dataIdInfo/tpCat/TopicCatCd",
+    "resource language": "dataIdInfo/dataLang/languageCode",
+    "resource character set": "dataIdInfo/dataChar/CharSetCd",
+    "citation title": "dataIdInfo/idCitation/resTitle",
+    "citation created date": "dataIdInfo/idCitation/date/createDate",
+    "format name": "distInfo/distFormat/formatName",
+    "format version": "distInfo/distFormat/formatVer",
+    "metadata language": "mdLang/languageCode",
+    "metadata scope": "mdHrLv/ScopeCd",
+    "metadata contact organization": "mdContact/rpOrgName",
+    "metadata contact individual": "mdContact/rpIndName",
+    "metadata contact position": "mdContact/rpPosName",
+    "metadata contact role": "mdContact/role/RoleCd",
 }
 
 
@@ -31,12 +33,22 @@ def validate_xml(xml_text: str) -> dict[str, list[str] | bool]:
     except etree.XMLSyntaxError as exc:
         return {"is_well_formed": False, "warnings": warnings, "errors": [str(exc)]}
 
-    for label, xpath in REQUIRED_XPATHS.items():
-        matches = root.xpath(xpath, namespaces=NS)
-        if not matches:
-            warnings.append(f"Missing or empty required high-level section: {label}.")
+    if root.tag != "metadata":
+        errors.append("XML root must be ArcGIS metadata XML: <metadata>.")
+        return {"is_well_formed": False, "warnings": warnings, "errors": errors}
 
-    if not root.xpath("gmd:identificationInfo//gmd:EX_GeographicBoundingBox", namespaces=NS):
+    for label, xpath in REQUIRED_XPATHS.items():
+        matches = root.xpath(xpath)
+        if not matches or all(not element_has_value(match) for match in matches):
+            warnings.append(f"Missing or empty ArcGIS metadata field: {label}.")
+
+    if not root.xpath("dataIdInfo/dataExt/geoEle/GeoBndBox"):
         warnings.append("Geographic bounding box is not present in the XML.")
 
     return {"is_well_formed": not errors, "warnings": warnings, "errors": errors}
+
+
+def element_has_value(element: object) -> bool:
+    if isinstance(element, etree._Element):
+        return bool((element.text or "").strip() or element.attrib)
+    return bool(str(element).strip())
