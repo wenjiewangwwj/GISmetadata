@@ -12,6 +12,7 @@ The app extracts factual metadata with Python libraries, optionally asks an AI p
 - Standardized metadata dictionary model
 - No AI rule-based draft mode
 - OpenAI, Claude / Anthropic, and OpenAI-compatible provider modules
+- Claude-compatible third-party provider configuration
 - Human review form for descriptive, contact, license, lineage, and temporal fields
 - ArcGIS metadata XML generation with ISO 19139-style required fields
 - Basic XML well-formedness and high-level section validation

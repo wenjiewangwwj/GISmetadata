@@ -12,6 +12,7 @@ from ai.base_provider import AIProviderError
 from ai.no_ai_provider import NoAIProvider
 from ai.provider_factory import (
     CLAUDE,
+    CLAUDE_COMPATIBLE,
     NO_AI,
     OPENAI,
     OPENAI_COMPATIBLE,
@@ -226,6 +227,30 @@ def render_provider_config(provider_name: str) -> dict[str, str]:
             value=get_config_value("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         )
         return {"api_key": api_key or get_config_value("ANTHROPIC_API_KEY", ""), "model": model}
+
+    if provider_name == CLAUDE_COMPATIBLE:
+        api_key = st.sidebar.text_input(
+            "Claude-compatible API key",
+            type="password",
+            placeholder="Uses Streamlit secrets or environment if blank",
+        )
+        base_url = st.sidebar.text_input(
+            "Claude-compatible API base URL",
+            value=get_config_value("THIRD_PARTY_CLAUDE_BASE_URL", ""),
+            help=(
+                "Use the Claude/Anthropic-compatible API root, such as https://provider.example.com. "
+                "If you paste a URL ending in /v1/messages, the app will trim it to the root."
+            ),
+        )
+        model = st.sidebar.text_input(
+            "Claude-compatible model",
+            value=get_config_value("THIRD_PARTY_CLAUDE_MODEL", ""),
+        )
+        return {
+            "api_key": api_key or get_config_value("THIRD_PARTY_CLAUDE_API_KEY", ""),
+            "base_url": base_url,
+            "model": model,
+        }
 
     api_key = st.sidebar.text_input(
         "Third-party API key",
@@ -497,6 +522,11 @@ def render_review_form(metadata: dict[str, Any]) -> None:
                     value=review.get("citation_created") or ai_draft.get("citation_created", ""),
                     placeholder="YYYY-MM-DD",
                 )
+                citation_created_time = st.text_input(
+                    "Citation created time",
+                    value=review.get("citation_created_time") or ai_draft.get("citation_created_time", ""),
+                    placeholder="HH:MM:SS",
+                )
                 format_name = st.text_input(
                     "Format name",
                     value=review.get("format_name") or ai_draft.get("format_name") or metadata.get("data_format", ""),
@@ -595,6 +625,7 @@ def render_review_form(metadata: dict[str, Any]) -> None:
                     "resource_language": resource_language,
                     "resource_character_set": resource_character_set,
                     "citation_created": citation_created,
+                    "citation_created_time": citation_created_time,
                     "format_name": format_name,
                     "format_version": format_version,
                     "metadata_language": metadata_language,
