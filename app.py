@@ -46,7 +46,7 @@ def main() -> None:
     initialize_state()
 
     st.title("GIS Metadata Assistant")
-    st.caption("AI-assisted ISO 19139 metadata drafting for GIS datasets before ArcGIS or Geoportal upload.")
+    st.caption("AI-assisted ArcGIS metadata XML drafting for GIS datasets before ArcGIS or Geoportal upload.")
 
     sidebar_state = render_sidebar()
     render_upload_status(sidebar_state)
@@ -73,6 +73,7 @@ def initialize_state() -> None:
         "xml_text": "",
         "summary_json": "",
         "validation_result": None,
+        "ai_draft_ready": False,
         "messages": [],
     }
     for key, value in defaults.items():
@@ -107,8 +108,9 @@ def render_sidebar() -> dict[str, Any]:
         use_container_width=True,
     )
     xml_clicked = st.sidebar.button(
-        "Generate ISO 19139 XML",
-        disabled=not bool(st.session_state.get("extracted_metadata")),
+        "Generate ArcGIS Metadata XML",
+        disabled=not bool(st.session_state.get("extracted_metadata"))
+        or not bool(st.session_state.get("ai_draft_ready")),
         use_container_width=True,
     )
 
@@ -166,10 +168,13 @@ def reset_workflow_state() -> None:
         "xml_text",
         "summary_json",
         "validation_result",
+        "ai_draft_ready",
         "messages",
     ):
         if key in {"available_layers", "csv_columns", "messages"}:
             st.session_state[key] = []
+        elif key == "ai_draft_ready":
+            st.session_state[key] = False
         else:
             st.session_state[key] = "" if key != "extracted_metadata" else None
 
@@ -305,11 +310,11 @@ def handle_extract(sidebar_state: dict[str, Any]) -> None:
             x_column=sidebar_state.get("x_column"),
             y_column=sidebar_state.get("y_column"),
         )
-        metadata["ai_draft"] = NoAIProvider({}).generate_metadata_draft(metadata)
         st.session_state["extracted_metadata"] = metadata
         st.session_state["xml_text"] = ""
         st.session_state["summary_json"] = ""
         st.session_state["validation_result"] = None
+        st.session_state["ai_draft_ready"] = False
         st.session_state["messages"].append("Metadata extraction completed.")
     except ReaderSelectionRequired as exc:
         st.session_state["available_layers"] = exc.options
@@ -331,17 +336,23 @@ def handle_ai_draft(sidebar_state: dict[str, Any]) -> None:
         draft = provider.generate_metadata_draft(metadata)
         metadata["ai_draft"] = draft
         st.session_state["extracted_metadata"] = normalize_metadata(metadata)
+        st.session_state["ai_draft_ready"] = True
         st.session_state["messages"].append(f"Metadata draft generated with {provider_name}.")
+        st.rerun()
     except AIProviderError as exc:
         fallback = NoAIProvider({}).generate_metadata_draft(metadata)
         metadata["ai_draft"] = fallback
         st.session_state["extracted_metadata"] = normalize_metadata(metadata)
+        st.session_state["ai_draft_ready"] = True
         st.session_state["messages"].append(str(exc))
+        st.rerun()
     except Exception as exc:
         fallback = NoAIProvider({}).generate_metadata_draft(metadata)
         metadata["ai_draft"] = fallback
         st.session_state["extracted_metadata"] = normalize_metadata(metadata)
+        st.session_state["ai_draft_ready"] = True
         st.session_state["messages"].append(f"AI draft error: {exc}. Falling back to No AI mode.")
+        st.rerun()
 
 
 def handle_xml_generation() -> None:
@@ -365,7 +376,7 @@ def handle_xml_generation() -> None:
         st.session_state["xml_text"] = xml_text
         st.session_state["summary_json"] = summary_json
         st.session_state["validation_result"] = validation_result
-        st.session_state["messages"].append("ISO 19139 XML generated.")
+        st.session_state["messages"].append("ArcGIS metadata XML generated.")
     except Exception as exc:
         st.session_state["messages"].append(f"XML generation error: {exc}")
 
@@ -376,8 +387,11 @@ def render_main_sections() -> None:
         metadata = normalize_metadata(metadata)
         st.session_state["extracted_metadata"] = metadata
         render_extracted_facts(metadata)
-        render_ai_draft(metadata)
-        render_review_form(metadata)
+        if st.session_state.get("ai_draft_ready"):
+            render_ai_draft(metadata)
+            render_review_form(metadata)
+        else:
+            st.info("Generate an AI draft before reviewing fields and creating the XML.")
 
     render_xml_preview()
     render_warnings_and_errors(metadata)
@@ -402,8 +416,10 @@ def render_review_form(metadata: dict[str, Any]) -> None:
     ai_draft = metadata.get("ai_draft", {})
     review = metadata.get("human_review", {})
     topic_categories = sorted(TOPIC_CATEGORIES)
-    current_topic = review.get("topic_category") or ai_draft.get("topic_category") or "location"
-    topic_index = topic_categories.index(current_topic) if current_topic in topic_categories else topic_categories.index("location")
+    current_topics = review.get("topic_categories") or review.get("topic_category") or ai_draft.get("topic_categories") or ai_draft.get("topic_category") or ["location"]
+    if isinstance(current_topics, str):
+        current_topics = [current_topics]
+    current_topics = [topic for topic in current_topics if topic in topic_categories] or ["location"]
 
     with st.expander("Human Review Fields", expanded=True):
         with st.form("human_review_form"):
@@ -425,7 +441,11 @@ def render_review_form(metadata: dict[str, Any]) -> None:
                 "Keywords",
                 value=", ".join(review.get("final_keywords") or ai_draft.get("keywords", [])),
             )
-            topic_category = st.selectbox("Topic category", topic_categories, index=topic_index)
+            selected_topic_categories = st.multiselect(
+                "Topic categories",
+                topic_categories,
+                default=current_topics,
+            )
 
             col1, col2 = st.columns(2)
             with col1:
@@ -454,6 +474,62 @@ def render_review_form(metadata: dict[str, Any]) -> None:
                     "Temporal end date",
                     value=review.get("temporal_end") or metadata.get("date_range", {}).get("end", ""),
                     placeholder="YYYY-MM-DD",
+                )
+
+            st.subheader("ArcGIS Metadata Fields")
+            item_col, meta_col, contact_col = st.columns(3)
+            with item_col:
+                resource_language = st.text_input(
+                    "Resource language",
+                    value=review.get("resource_language") or ai_draft.get("resource_language", "eng"),
+                )
+                resource_character_set = st.text_input(
+                    "Resource character set",
+                    value=review.get("resource_character_set")
+                    or ai_draft.get("resource_character_set", "utf8"),
+                )
+                citation_created = st.text_input(
+                    "Citation created",
+                    value=review.get("citation_created") or ai_draft.get("citation_created", ""),
+                    placeholder="YYYY-MM-DD",
+                )
+                format_name = st.text_input(
+                    "Format name",
+                    value=review.get("format_name") or ai_draft.get("format_name") or metadata.get("data_format", ""),
+                )
+                format_version = st.text_input(
+                    "Format version",
+                    value=review.get("format_version") or ai_draft.get("format_version", ""),
+                )
+            with meta_col:
+                metadata_language = st.text_input(
+                    "Metadata language",
+                    value=review.get("metadata_language") or ai_draft.get("metadata_language", "eng"),
+                )
+                metadata_scope = st.text_input(
+                    "Metadata scope",
+                    value=review.get("metadata_scope") or ai_draft.get("metadata_scope", "dataset"),
+                )
+            with contact_col:
+                metadata_contact_organization = st.text_input(
+                    "Metadata contact organization",
+                    value=review.get("metadata_contact_organization")
+                    or ai_draft.get("metadata_contact_organization", ""),
+                )
+                metadata_contact_individual_name = st.text_input(
+                    "Metadata contact individual name",
+                    value=review.get("metadata_contact_individual_name")
+                    or ai_draft.get("metadata_contact_individual_name", ""),
+                )
+                metadata_contact_position = st.text_input(
+                    "Metadata contact position",
+                    value=review.get("metadata_contact_position")
+                    or ai_draft.get("metadata_contact_position", ""),
+                )
+                metadata_contact_role = st.text_input(
+                    "Metadata contact role",
+                    value=review.get("metadata_contact_role")
+                    or ai_draft.get("metadata_contact_role", "pointOfContact"),
                 )
 
             use_constraints = st.text_area(
@@ -486,7 +562,19 @@ def render_review_form(metadata: dict[str, Any]) -> None:
                     "final_abstract": final_abstract,
                     "final_purpose": final_purpose,
                     "final_keywords": [item.strip() for item in final_keywords.split(",") if item.strip()],
-                    "topic_category": topic_category,
+                    "topic_category": selected_topic_categories[0] if selected_topic_categories else "location",
+                    "topic_categories": selected_topic_categories or ["location"],
+                    "resource_language": resource_language,
+                    "resource_character_set": resource_character_set,
+                    "citation_created": citation_created,
+                    "format_name": format_name,
+                    "format_version": format_version,
+                    "metadata_language": metadata_language,
+                    "metadata_scope": metadata_scope,
+                    "metadata_contact_organization": metadata_contact_organization,
+                    "metadata_contact_individual_name": metadata_contact_individual_name,
+                    "metadata_contact_position": metadata_contact_position,
+                    "metadata_contact_role": metadata_contact_role,
                     "attribute_descriptions": data_editor_records(edited_attributes),
                     "creator": creator,
                     "publisher": publisher,
@@ -520,11 +608,11 @@ def is_xml_text(value: Any) -> bool:
     if not isinstance(value, str):
         return False
     stripped = value.lstrip()
-    return stripped.startswith("<?xml") or stripped.startswith("<gmd:MD_Metadata")
+    return stripped.startswith("<?xml") or stripped.startswith("<metadata")
 
 
 def render_xml_preview() -> None:
-    with st.expander("Generated XML Preview", expanded=bool(st.session_state.get("xml_text"))):
+    with st.expander("Generated ArcGIS Metadata XML Preview", expanded=bool(st.session_state.get("xml_text"))):
         xml_text = st.session_state.get("xml_text")
         if xml_text:
             if not is_xml_text(xml_text):
@@ -532,8 +620,23 @@ def render_xml_preview() -> None:
                 st.error("Generated XML preview was cleared because it did not contain XML text.")
                 return
             st.code(xml_text, language="xml")
+            st.download_button(
+                "Download metadata.xml",
+                data=xml_text,
+                file_name="metadata.xml",
+                mime="application/xml",
+                use_container_width=True,
+            )
+            if st.session_state.get("summary_json"):
+                st.download_button(
+                    "Download metadata_summary.json",
+                    data=st.session_state["summary_json"],
+                    file_name="metadata_summary.json",
+                    mime="application/json",
+                    use_container_width=True,
+                )
         else:
-            st.write("Generate ISO 19139 XML after extraction and review.")
+            st.write("Generate ArcGIS metadata XML after extraction, AI drafting, and review.")
 
 
 def render_warnings_and_errors(metadata: dict[str, Any] | None) -> None:

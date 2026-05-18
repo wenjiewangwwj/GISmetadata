@@ -1,6 +1,6 @@
 # GIS Metadata Assistant
 
-Streamlit prototype for AI-assisted ISO 19139 metadata generation before GIS datasets are uploaded to ArcGIS Online, ArcGIS Enterprise, or a Geoportal.
+Streamlit prototype for AI-assisted ArcGIS metadata XML generation before GIS datasets are uploaded to ArcGIS Online, ArcGIS Enterprise, or a Geoportal.
 
 The app extracts factual metadata with Python libraries, optionally asks an AI provider to draft descriptive fields, lets a human reviewer edit the record, and generates downloadable `metadata.xml` and `metadata_summary.json` files.
 
@@ -13,7 +13,7 @@ The app extracts factual metadata with Python libraries, optionally asks an AI p
 - No AI rule-based draft mode
 - OpenAI, Claude / Anthropic, and OpenAI-compatible provider modules
 - Human review form for descriptive, contact, license, lineage, and temporal fields
-- ISO 19139 XML generation from a template
+- ArcGIS metadata XML generation with ISO 19139-style required fields
 - Basic XML well-formedness and high-level section validation
 - Streamlit downloads for XML and JSON summary
 
