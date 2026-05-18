@@ -30,6 +30,8 @@ streamlit run app.py
 
 API keys are optional. The app works with `No AI / rule-based only` selected.
 
+For Streamlit Community Cloud, `runtime.txt` pins Python 3.11 so the geospatial dependencies can install from prebuilt wheels.
+
 ## API Key Handling
 
 Do not hardcode API keys. Provide them through one of:
