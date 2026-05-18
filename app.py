@@ -36,6 +36,14 @@ from readers.base_reader import ReaderError, ReaderSelectionRequired
 BASE_DIR = Path(__file__).parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "output"
+PROVIDER_PLACEHOLDER = "Select AI provider or No AI"
+SUPPORTED_FORMATS = (
+    "Shapefile ZIP (.zip with .shp, .shx, .dbf)",
+    "GeoJSON (.geojson, .json)",
+    "GeoPackage (.gpkg)",
+    "CSV (.csv)",
+    "GeoTIFF (.tif, .tiff)",
+)
 
 
 def main() -> None:
@@ -48,6 +56,7 @@ def main() -> None:
 
     st.title("GIS Metadata Assistant")
     st.caption("AI-assisted ArcGIS metadata XML drafting for GIS datasets before ArcGIS or Geoportal upload.")
+    render_intro()
 
     sidebar_state = render_sidebar()
     render_upload_status(sidebar_state)
@@ -75,10 +84,20 @@ def initialize_state() -> None:
         "summary_json": "",
         "validation_result": None,
         "ai_draft_ready": False,
+        "selected_provider_name": PROVIDER_PLACEHOLDER,
         "messages": [],
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
+
+
+def render_intro() -> None:
+    st.info(
+        "Upload a GIS dataset, extract metadata, choose an AI provider or No AI, review the fields, then download ArcGIS metadata XML."
+    )
+    with st.expander("Supported Data Formats", expanded=False):
+        for item in SUPPORTED_FORMATS:
+            st.write(f"- {item}")
 
 
 def render_sidebar() -> dict[str, Any]:
@@ -94,18 +113,24 @@ def render_sidebar() -> dict[str, Any]:
     selected_layer = render_layer_selector(detected_format)
     x_column, y_column = render_csv_coordinate_selectors(detected_format)
 
-    provider_name = st.sidebar.selectbox("AI provider", provider_options(), index=0)
-    provider_config = render_provider_config(provider_name)
-
-    st.sidebar.divider()
     extract_clicked = st.sidebar.button(
         "Extract metadata",
         disabled=not bool(st.session_state.get("uploaded_path")),
         use_container_width=True,
     )
+
+    st.sidebar.divider()
+    provider_choices = [PROVIDER_PLACEHOLDER] + provider_options()
+    current_provider = st.session_state.get("selected_provider_name", PROVIDER_PLACEHOLDER)
+    provider_index = provider_choices.index(current_provider) if current_provider in provider_choices else 0
+    provider_name = st.sidebar.selectbox("AI provider", provider_choices, index=provider_index)
+    st.session_state["selected_provider_name"] = provider_name
+    provider_config = {} if provider_name == PROVIDER_PLACEHOLDER else render_provider_config(provider_name)
+
     ai_clicked = st.sidebar.button(
         "Generate AI draft",
-        disabled=not bool(st.session_state.get("extracted_metadata")),
+        disabled=not bool(st.session_state.get("extracted_metadata"))
+        or provider_name in {PROVIDER_PLACEHOLDER, NO_AI},
         use_container_width=True,
     )
     can_generate_xml = bool(st.session_state.get("extracted_metadata")) and (
@@ -172,12 +197,15 @@ def reset_workflow_state() -> None:
         "summary_json",
         "validation_result",
         "ai_draft_ready",
+        "selected_provider_name",
         "messages",
     ):
         if key in {"available_layers", "csv_columns", "messages"}:
             st.session_state[key] = []
         elif key == "ai_draft_ready":
             st.session_state[key] = False
+        elif key == "selected_provider_name":
+            st.session_state[key] = PROVIDER_PLACEHOLDER
         else:
             st.session_state[key] = "" if key != "extracted_metadata" else None
 
@@ -358,6 +386,9 @@ def handle_ai_draft(sidebar_state: dict[str, Any]) -> None:
         return
 
     provider_name = sidebar_state["provider_name"]
+    if provider_name == PROVIDER_PLACEHOLDER:
+        st.session_state["messages"].append("Select an AI provider or No AI before generating a draft.")
+        return
     try:
         provider = get_ai_provider(provider_name, sidebar_state["provider_config"])
         draft = provider.generate_metadata_draft(metadata)
@@ -712,11 +743,14 @@ def render_xml_preview() -> None:
 
 
 def render_warnings_and_errors(metadata: dict[str, Any] | None) -> None:
-    with st.expander("Warnings and Errors", expanded=bool(st.session_state.get("messages"))):
-        messages = list(dict.fromkeys(st.session_state.get("messages", [])))
-        warnings = collect_metadata_warnings(metadata) if metadata else []
-        validation_result = st.session_state.get("validation_result")
+    messages = list(dict.fromkeys(st.session_state.get("messages", [])))
+    warnings = collect_metadata_warnings(metadata) if metadata else []
+    if metadata and st.session_state.get("selected_provider_name") == PROVIDER_PLACEHOLDER:
+        warnings.append("Select an AI provider or No AI before generating a draft or XML.")
+    warnings = list(dict.fromkeys(warnings))
+    validation_result = st.session_state.get("validation_result")
 
+    with st.expander("Warnings and Errors", expanded=bool(messages or warnings or validation_result)):
         for message in messages:
             st.info(message)
         for warning in warnings:
