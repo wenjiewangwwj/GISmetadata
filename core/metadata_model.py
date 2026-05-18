@@ -26,6 +26,18 @@ def empty_ai_draft() -> dict[str, Any]:
         "purpose": "",
         "keywords": [],
         "topic_category": "",
+        "topic_categories": [],
+        "resource_language": "eng",
+        "resource_character_set": "utf8",
+        "citation_created": "",
+        "format_name": "",
+        "format_version": "",
+        "metadata_language": "eng",
+        "metadata_scope": "dataset",
+        "metadata_contact_organization": "",
+        "metadata_contact_individual_name": "",
+        "metadata_contact_position": "",
+        "metadata_contact_role": "pointOfContact",
         "attribute_descriptions": [],
         "lineage_draft": "Needs review.",
         "use_constraints_draft": "Needs review.",
@@ -39,6 +51,18 @@ def empty_human_review() -> dict[str, Any]:
         "final_purpose": "",
         "final_keywords": [],
         "topic_category": "",
+        "topic_categories": [],
+        "resource_language": "",
+        "resource_character_set": "",
+        "citation_created": "",
+        "format_name": "",
+        "format_version": "",
+        "metadata_language": "",
+        "metadata_scope": "",
+        "metadata_contact_organization": "",
+        "metadata_contact_individual_name": "",
+        "metadata_contact_position": "",
+        "metadata_contact_role": "",
         "attribute_descriptions": [],
         "creator": "",
         "publisher": "",
@@ -96,6 +120,11 @@ def normalize_ai_draft(draft: dict[str, Any] | None) -> dict[str, Any]:
     if draft:
         deep_update(normalized, draft)
     normalized["keywords"] = ensure_string_list(normalized.get("keywords"))
+    normalized["topic_categories"] = ensure_string_list(normalized.get("topic_categories"))
+    if not normalized["topic_categories"] and normalized.get("topic_category"):
+        normalized["topic_categories"] = ensure_string_list(normalized.get("topic_category"))
+    if normalized["topic_categories"] and not normalized.get("topic_category"):
+        normalized["topic_category"] = normalized["topic_categories"][0]
     normalized["attribute_descriptions"] = normalize_attribute_descriptions(
         normalized.get("attribute_descriptions", [])
     )
@@ -107,6 +136,11 @@ def normalize_human_review(review: dict[str, Any] | None) -> dict[str, Any]:
     if review:
         deep_update(normalized, review)
     normalized["final_keywords"] = ensure_string_list(normalized.get("final_keywords"))
+    normalized["topic_categories"] = ensure_string_list(normalized.get("topic_categories"))
+    if not normalized["topic_categories"] and normalized.get("topic_category"):
+        normalized["topic_categories"] = ensure_string_list(normalized.get("topic_category"))
+    if normalized["topic_categories"] and not normalized.get("topic_category"):
+        normalized["topic_category"] = normalized["topic_categories"][0]
     normalized["attribute_descriptions"] = normalize_attribute_descriptions(
         normalized.get("attribute_descriptions", [])
     )
