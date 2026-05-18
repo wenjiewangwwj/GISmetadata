@@ -160,9 +160,26 @@ def normalize_fields(fields: list[dict[str, Any]] | None) -> list[dict[str, Any]
                 "type": str(field.get("type", "")),
                 "sample_values": ensure_string_list(field.get("sample_values", [])),
                 "null_count": field.get("null_count"),
+                "unique_count": field.get("unique_count"),
+                "top_values": normalize_top_values(field.get("top_values", [])),
+                "min_value": field.get("min_value"),
+                "max_value": field.get("max_value"),
+                "mean_value": field.get("mean_value"),
             }
         )
     return normalized_fields
+
+
+def normalize_top_values(values: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    normalized = []
+    for item in values or []:
+        normalized.append(
+            {
+                "value": str(item.get("value", "")),
+                "count": item.get("count"),
+            }
+        )
+    return normalized
 
 
 def normalize_attribute_descriptions(items: list[dict[str, Any]] | None) -> list[dict[str, str]]:

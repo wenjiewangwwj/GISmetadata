@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import warnings
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -70,15 +71,61 @@ def dataframe_fields(df: Any, *, exclude_geometry: bool = True, sample_size: int
         series = df[column]
         non_null = series.dropna()
         samples = [stringify_sample(value) for value in non_null.head(sample_size).tolist()]
-        fields.append(
-            {
-                "name": str(column),
-                "type": str(series.dtype),
-                "sample_values": samples,
-                "null_count": int(series.isna().sum()),
-            }
-        )
+        field = {
+            "name": str(column),
+            "type": str(series.dtype),
+            "sample_values": samples,
+            "null_count": int(series.isna().sum()),
+            "unique_count": int(non_null.nunique()) if not non_null.empty else 0,
+        }
+        field.update(field_value_summary(series, sample_size=sample_size))
+        fields.append(field)
     return fields
+
+
+def field_value_summary(series: Any, *, sample_size: int = 5) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    non_null = series.dropna()
+    if non_null.empty:
+        return summary
+
+    try:
+        import pandas as pd
+
+        if pd.api.types.is_numeric_dtype(series):
+            summary["min_value"] = make_json_safe(non_null.min())
+            summary["max_value"] = make_json_safe(non_null.max())
+            summary["mean_value"] = make_json_safe(non_null.mean())
+            return summary
+
+        if should_try_datetime_summary(series, non_null):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                parsed = pd.to_datetime(non_null.head(100), errors="coerce", utc=True)
+                if parsed.notna().mean() >= 0.7:
+                    all_parsed = pd.to_datetime(non_null, errors="coerce", utc=True).dropna()
+                    if not all_parsed.empty:
+                        summary["min_value"] = all_parsed.min().date().isoformat()
+                        summary["max_value"] = all_parsed.max().date().isoformat()
+                        return summary
+
+        top_values = non_null.astype(str).value_counts().head(sample_size)
+        summary["top_values"] = [
+            {"value": stringify_sample(value), "count": int(count)}
+            for value, count in top_values.items()
+            if stringify_sample(value)
+        ]
+    except Exception:
+        pass
+    return summary
+
+
+def should_try_datetime_summary(series: Any, non_null: Any) -> bool:
+    name = str(getattr(series, "name", "") or "").lower()
+    if any(hint in name for hint in TEMPORAL_NAME_HINTS):
+        return True
+    sample_text = " ".join(str(value) for value in non_null.head(10).tolist())
+    return bool(re.search(r"(18|19|20|21)\d{2}[-/]\d{1,2}[-/]\d{1,2}", sample_text))
 
 
 def stringify_sample(value: Any) -> str:
