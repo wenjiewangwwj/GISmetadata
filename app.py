@@ -107,10 +107,12 @@ def render_sidebar() -> dict[str, Any]:
         disabled=not bool(st.session_state.get("extracted_metadata")),
         use_container_width=True,
     )
+    can_generate_xml = bool(st.session_state.get("extracted_metadata")) and (
+        provider_name == NO_AI or bool(st.session_state.get("ai_draft_ready"))
+    )
     xml_clicked = st.sidebar.button(
         "Generate ArcGIS Metadata XML",
-        disabled=not bool(st.session_state.get("extracted_metadata"))
-        or not bool(st.session_state.get("ai_draft_ready")),
+        disabled=not can_generate_xml,
         use_container_width=True,
     )
 
@@ -362,8 +364,9 @@ def handle_xml_generation() -> None:
 
     try:
         metadata = normalize_metadata(metadata)
-        if not metadata.get("ai_draft"):
+        if not st.session_state.get("ai_draft_ready"):
             metadata["ai_draft"] = NoAIProvider({}).generate_metadata_draft(metadata)
+            st.session_state["ai_draft_ready"] = True
         xml_text = build_iso19139_xml(metadata)
         if not is_xml_text(xml_text):
             raise ValueError("ISO XML builder returned non-XML output.")
@@ -376,6 +379,7 @@ def handle_xml_generation() -> None:
         st.session_state["xml_text"] = xml_text
         st.session_state["summary_json"] = summary_json
         st.session_state["validation_result"] = validation_result
+        st.session_state["extracted_metadata"] = metadata
         st.session_state["messages"].append("ArcGIS metadata XML generated.")
     except Exception as exc:
         st.session_state["messages"].append(f"XML generation error: {exc}")
@@ -391,7 +395,7 @@ def render_main_sections() -> None:
             render_ai_draft(metadata)
             render_review_form(metadata)
         else:
-            st.info("Generate an AI draft before reviewing fields and creating the XML.")
+            st.info("Generate an AI draft before reviewing fields, or select No AI mode to generate XML directly.")
 
     render_xml_preview()
     render_warnings_and_errors(metadata)
@@ -532,6 +536,30 @@ def render_review_form(metadata: dict[str, Any]) -> None:
                     or ai_draft.get("metadata_contact_role", "pointOfContact"),
                 )
 
+            st.subheader("Bounding Box")
+            bbox = metadata.get("bbox", {})
+            west_col, east_col, south_col, north_col = st.columns(4)
+            with west_col:
+                bbox_west = st.text_input(
+                    "West",
+                    value=review.get("bbox_west") or format_bbox_value(bbox.get("west")),
+                )
+            with east_col:
+                bbox_east = st.text_input(
+                    "East",
+                    value=review.get("bbox_east") or format_bbox_value(bbox.get("east")),
+                )
+            with south_col:
+                bbox_south = st.text_input(
+                    "South",
+                    value=review.get("bbox_south") or format_bbox_value(bbox.get("south")),
+                )
+            with north_col:
+                bbox_north = st.text_input(
+                    "North",
+                    value=review.get("bbox_north") or format_bbox_value(bbox.get("north")),
+                )
+
             use_constraints = st.text_area(
                 "Use constraints",
                 value=review.get("use_constraints") or ai_draft.get("use_constraints_draft", ""),
@@ -575,6 +603,10 @@ def render_review_form(metadata: dict[str, Any]) -> None:
                     "metadata_contact_individual_name": metadata_contact_individual_name,
                     "metadata_contact_position": metadata_contact_position,
                     "metadata_contact_role": metadata_contact_role,
+                    "bbox_west": bbox_west,
+                    "bbox_east": bbox_east,
+                    "bbox_south": bbox_south,
+                    "bbox_north": bbox_north,
                     "attribute_descriptions": data_editor_records(edited_attributes),
                     "creator": creator,
                     "publisher": publisher,
@@ -602,6 +634,15 @@ def data_editor_records(value: Any) -> list[dict[str, str]]:
     if isinstance(value, list):
         return value
     return []
+
+
+def format_bbox_value(value: Any) -> str:
+    if value in ("", None):
+        return ""
+    try:
+        return f"{float(value):.8f}".rstrip("0").rstrip(".")
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def is_xml_text(value: Any) -> bool:
