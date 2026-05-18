@@ -16,6 +16,7 @@ class NoAIProvider(BaseAIProvider):
             "GIS",
             "geospatial data",
         ]
+        now = datetime.now(timezone.utc)
         draft = {
             "suggested_title": title,
             "abstract": (
@@ -28,7 +29,8 @@ class NoAIProvider(BaseAIProvider):
             "topic_categories": ["location"],
             "resource_language": "eng",
             "resource_character_set": "utf8",
-            "citation_created": datetime.now(timezone.utc).date().isoformat(),
+            "citation_created": now.date().isoformat(),
+            "citation_created_time": now.strftime("%H:%M:%S"),
             "format_name": extracted_metadata.get("data_format", "") or "Unknown",
             "format_version": infer_format_version(extracted_metadata.get("data_format", "")),
             "metadata_language": "eng",
