@@ -14,6 +14,7 @@ REQUIRED_XPATHS = {
     "resource character set": "dataIdInfo/dataChar/CharSetCd",
     "citation title": "dataIdInfo/idCitation/resTitle",
     "citation created date": "dataIdInfo/idCitation/date/createDate",
+    "citation created time": "dataIdInfo/idCitation/date/createTime",
     "format name": "distInfo/distFormat/formatName",
     "format version": "distInfo/distFormat/formatVer",
     "metadata language": "mdLang/languageCode",

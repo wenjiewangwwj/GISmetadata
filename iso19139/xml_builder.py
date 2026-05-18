@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from typing import Any
 
 from lxml import etree
@@ -120,7 +120,9 @@ def build_arcgis_metadata_xml(metadata: dict[str, Any]) -> str:
 def resolve_reviewed_values(metadata: dict[str, Any]) -> dict[str, Any]:
     ai_draft = metadata.get("ai_draft", {})
     review = metadata.get("human_review", {})
-    today = datetime.now(timezone.utc).date().isoformat()
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    current_time = now.strftime("%H:%M:%S")
 
     title = first_text(
         review.get("final_title"),
@@ -177,6 +179,14 @@ def resolve_reviewed_values(metadata: dict[str, Any]) -> dict[str, Any]:
             first_text(review.get("resource_character_set"), ai_draft.get("resource_character_set"), "utf8")
         ),
         "citation_created": iso_date(citation_created, today),
+        "citation_created_time": iso_time(
+            first_text(
+                review.get("citation_created_time"),
+                ai_draft.get("citation_created_time"),
+                citation_created,
+            ),
+            current_time,
+        ),
         "format_name": format_name,
         "format_version": first_text(
             review.get("format_version"),
@@ -272,6 +282,7 @@ def add_data_identification(root: etree._Element, metadata: dict[str, Any], valu
     text_child(citation, "resTitle", values["title"])
     date = etree.SubElement(citation, "date")
     text_child(date, "createDate", values["citation_created"])
+    text_child(date, "createTime", values["citation_created_time"])
 
     text_child(data_info, "idAbs", values["abstract"])
     text_child(data_info, "idPurp", values["purpose"])
@@ -466,3 +477,26 @@ def iso_date(value: str, default: str) -> str:
     if year:
         return f"{year.group(0)}-01-01"
     return default
+
+
+def iso_time(value: str, default: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return default
+    match = re.search(r"(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?", text)
+    if match:
+        hour = clamp_int(match.group(1), 0, 23)
+        minute = clamp_int(match.group(2), 0, 59)
+        second = clamp_int(match.group(3) or "0", 0, 59)
+        return time(hour, minute, second).isoformat()
+    match = re.search(r"(?<!\d)(\d{2})(\d{2})(\d{2})(?!\d)", text)
+    if match:
+        hour = clamp_int(match.group(1), 0, 23)
+        minute = clamp_int(match.group(2), 0, 59)
+        second = clamp_int(match.group(3), 0, 59)
+        return time(hour, minute, second).isoformat()
+    return default
+
+
+def clamp_int(value: str, minimum: int, maximum: int) -> int:
+    return max(minimum, min(maximum, int(value)))
