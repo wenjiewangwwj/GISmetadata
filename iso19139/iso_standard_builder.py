@@ -9,7 +9,7 @@ from iso19139.xml_builder import resolve_reviewed_values
 
 GMD = "http://www.isotc211.org/2005/gmd"
 GCO = "http://www.isotc211.org/2005/gco"
-GML = "http://www.opengis.net/gml"
+GML = "http://www.opengis.net/gml/3.2"
 XLINK = "http://www.w3.org/1999/xlink"
 XSI = "http://www.w3.org/2001/XMLSchema-instance"
 
