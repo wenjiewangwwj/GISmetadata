@@ -28,6 +28,8 @@ from core.metadata_pipeline import (
 )
 from core.utils import safe_filename, safe_json_dumps
 from core.validation import collect_metadata_warnings
+from iso19139.iso_standard_builder import build_iso19115_xml
+from iso19139.iso_standard_validator import validate_iso19115_xml
 from iso19139.xml_builder import TOPIC_CATEGORIES, build_iso19139_xml
 from iso19139.xml_validator import validate_xml
 from readers.base_reader import ReaderError, ReaderSelectionRequired
@@ -55,7 +57,7 @@ def main() -> None:
     initialize_state()
 
     st.title("GIS Metadata Assistant")
-    st.caption("AI-assisted ArcGIS metadata XML drafting for GIS datasets before ArcGIS or Geoportal upload.")
+    st.caption("AI-assisted ArcGIS and standards-based ISO 19115/19139 metadata XML drafting for GIS datasets.")
     render_intro()
 
     sidebar_state = render_sidebar()
@@ -67,6 +69,8 @@ def main() -> None:
         handle_ai_draft(sidebar_state)
     if sidebar_state["xml_clicked"]:
         handle_xml_generation()
+    if sidebar_state["iso_xml_clicked"]:
+        handle_iso19115_generation()
 
     render_main_sections()
 
@@ -81,8 +85,10 @@ def initialize_state() -> None:
         "csv_columns": [],
         "extracted_metadata": None,
         "xml_text": "",
+        "iso_xml_text": "",
         "summary_json": "",
         "validation_result": None,
+        "iso_validation_result": None,
         "ai_draft_ready": False,
         "selected_provider_name": PROVIDER_PLACEHOLDER,
         "messages": [],
@@ -93,7 +99,7 @@ def initialize_state() -> None:
 
 def render_intro() -> None:
     st.info(
-        "Upload a GIS dataset, extract metadata, choose an AI provider or No AI, review the fields, then download ArcGIS metadata XML."
+        "Upload a GIS dataset, extract metadata, choose an AI provider or No AI, review the fields, then download ArcGIS or ISO 19115/19139 metadata XML."
     )
     with st.expander("Supported Data Formats", expanded=False):
         for item in SUPPORTED_FORMATS:
@@ -141,6 +147,11 @@ def render_sidebar() -> dict[str, Any]:
         disabled=not can_generate_xml,
         use_container_width=True,
     )
+    iso_xml_clicked = st.sidebar.button(
+        "Generate ISO 19115/19139 XML",
+        disabled=not can_generate_xml,
+        use_container_width=True,
+    )
 
     render_sidebar_downloads()
 
@@ -150,6 +161,7 @@ def render_sidebar() -> dict[str, Any]:
         "extract_clicked": extract_clicked,
         "ai_clicked": ai_clicked,
         "xml_clicked": xml_clicked,
+        "iso_xml_clicked": iso_xml_clicked,
         "selected_layer": selected_layer,
         "x_column": x_column,
         "y_column": y_column,
@@ -194,8 +206,10 @@ def reset_workflow_state() -> None:
         "csv_columns",
         "extracted_metadata",
         "xml_text",
+        "iso_xml_text",
         "summary_json",
         "validation_result",
+        "iso_validation_result",
         "ai_draft_ready",
         "selected_provider_name",
         "messages",
@@ -206,8 +220,10 @@ def reset_workflow_state() -> None:
             st.session_state[key] = False
         elif key == "selected_provider_name":
             st.session_state[key] = PROVIDER_PLACEHOLDER
+        elif key in {"extracted_metadata", "validation_result", "iso_validation_result"}:
+            st.session_state[key] = None
         else:
-            st.session_state[key] = "" if key != "extracted_metadata" else None
+            st.session_state[key] = ""
 
 
 def render_layer_selector(detected_format: str) -> str:
@@ -320,6 +336,14 @@ def render_sidebar_downloads() -> None:
             mime="application/xml",
             use_container_width=True,
         )
+    if st.session_state.get("iso_xml_text"):
+        st.sidebar.download_button(
+            "Download metadata_iso19115.xml",
+            data=st.session_state["iso_xml_text"],
+            file_name="metadata_iso19115.xml",
+            mime="application/xml",
+            use_container_width=True,
+        )
     if st.session_state.get("summary_json"):
         st.sidebar.download_button(
             "Download metadata_summary.json",
@@ -367,8 +391,10 @@ def handle_extract(sidebar_state: dict[str, Any]) -> None:
         )
         st.session_state["extracted_metadata"] = metadata
         st.session_state["xml_text"] = ""
+        st.session_state["iso_xml_text"] = ""
         st.session_state["summary_json"] = ""
         st.session_state["validation_result"] = None
+        st.session_state["iso_validation_result"] = None
         st.session_state["ai_draft_ready"] = False
         st.session_state["messages"].append("Metadata extraction completed.")
     except ReaderSelectionRequired as exc:
@@ -439,6 +465,34 @@ def handle_xml_generation() -> None:
         st.session_state["messages"].append("ArcGIS metadata XML generated.")
     except Exception as exc:
         st.session_state["messages"].append(f"XML generation error: {exc}")
+
+
+def handle_iso19115_generation() -> None:
+    metadata = st.session_state.get("extracted_metadata")
+    if not metadata:
+        return
+
+    try:
+        metadata = normalize_metadata(metadata)
+        if not st.session_state.get("ai_draft_ready"):
+            metadata["ai_draft"] = NoAIProvider({}).generate_metadata_draft(metadata)
+            st.session_state["ai_draft_ready"] = True
+        xml_text = build_iso19115_xml(metadata)
+        if not is_xml_text(xml_text):
+            raise ValueError("ISO 19115 XML builder returned non-XML output.")
+        summary_json = safe_json_dumps(metadata)
+        validation_result = validate_iso19115_xml(xml_text)
+
+        (OUTPUT_DIR / "metadata_iso19115.xml").write_text(xml_text, encoding="utf-8")
+        (OUTPUT_DIR / "metadata_summary.json").write_text(summary_json, encoding="utf-8")
+
+        st.session_state["iso_xml_text"] = xml_text
+        st.session_state["summary_json"] = summary_json
+        st.session_state["iso_validation_result"] = validation_result
+        st.session_state["extracted_metadata"] = metadata
+        st.session_state["messages"].append("ISO 19115/19139 metadata XML generated.")
+    except Exception as exc:
+        st.session_state["messages"].append(f"ISO 19115 XML generation error: {exc}")
 
 
 def render_main_sections() -> None:
@@ -685,8 +739,10 @@ def render_review_form(metadata: dict[str, Any]) -> None:
                 }
                 st.session_state["extracted_metadata"] = normalize_metadata(metadata)
                 st.session_state["xml_text"] = ""
+                st.session_state["iso_xml_text"] = ""
                 st.session_state["summary_json"] = ""
                 st.session_state["validation_result"] = None
+                st.session_state["iso_validation_result"] = None
                 st.success("Review fields saved.")
 
 
@@ -741,6 +797,35 @@ def render_xml_preview() -> None:
         else:
             st.write("Generate ArcGIS metadata XML after extraction, AI drafting, and review.")
 
+    with st.expander(
+        "Generated ISO 19115/19139 XML Preview",
+        expanded=bool(st.session_state.get("iso_xml_text")),
+    ):
+        iso_xml_text = st.session_state.get("iso_xml_text")
+        if iso_xml_text:
+            if not is_xml_text(iso_xml_text):
+                st.session_state["iso_xml_text"] = ""
+                st.error("Generated ISO XML preview was cleared because it did not contain XML text.")
+                return
+            st.code(iso_xml_text, language="xml")
+            st.download_button(
+                "Download metadata_iso19115.xml",
+                data=iso_xml_text,
+                file_name="metadata_iso19115.xml",
+                mime="application/xml",
+                use_container_width=True,
+            )
+            if st.session_state.get("summary_json"):
+                st.download_button(
+                    "Download metadata_summary.json",
+                    data=st.session_state["summary_json"],
+                    file_name="metadata_summary.json",
+                    mime="application/json",
+                    use_container_width=True,
+                )
+        else:
+            st.write("Generate ISO 19115/19139 XML after extraction, AI drafting, and review.")
+
 
 def render_warnings_and_errors(metadata: dict[str, Any] | None) -> None:
     messages = list(dict.fromkeys(st.session_state.get("messages", [])))
@@ -749,21 +834,35 @@ def render_warnings_and_errors(metadata: dict[str, Any] | None) -> None:
         warnings.append("Select an AI provider or No AI before generating a draft or XML.")
     warnings = list(dict.fromkeys(warnings))
     validation_result = st.session_state.get("validation_result")
+    iso_validation_result = st.session_state.get("iso_validation_result")
 
-    with st.expander("Warnings and Errors", expanded=bool(messages or warnings or validation_result)):
+    with st.expander(
+        "Warnings and Errors",
+        expanded=bool(messages or warnings or validation_result or iso_validation_result),
+    ):
         for message in messages:
             st.info(message)
         for warning in warnings:
             st.warning(warning)
         if validation_result:
-            if validation_result.get("is_well_formed"):
-                st.success("XML is well-formed.")
-            for warning in validation_result.get("warnings", []):
-                st.warning(warning)
-            for error in validation_result.get("errors", []):
-                st.error(error)
-        if not messages and not warnings and not validation_result:
+            render_validation_messages("ArcGIS XML", validation_result)
+        if iso_validation_result:
+            render_validation_messages("ISO 19115/19139 XML", iso_validation_result)
+        if not messages and not warnings and not validation_result and not iso_validation_result:
             st.write("No warnings or errors yet.")
+
+
+def render_validation_messages(label: str, validation_result: dict[str, Any]) -> None:
+    if validation_result.get("is_well_formed"):
+        st.success(f"{label} is well-formed.")
+    if validation_result.get("is_schema_valid") is True:
+        st.success(f"{label} validates against the official ISO 19139 XSD.")
+    elif validation_result.get("is_schema_valid") is False:
+        st.error(f"{label} does not validate against the official ISO 19139 XSD.")
+    for warning in validation_result.get("warnings", []):
+        st.warning(warning)
+    for error in validation_result.get("errors", []):
+        st.error(error)
 
 
 if __name__ == "__main__":

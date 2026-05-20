@@ -15,6 +15,8 @@ The app extracts factual metadata with Python libraries, optionally asks an AI p
 - Claude-compatible third-party provider configuration
 - Human review form for descriptive, contact, license, lineage, and temporal fields
 - ArcGIS metadata XML generation with ISO 19139-style required fields
+- Standards-style ISO 19115 metadata export using the ISO 19139 `gmd:MD_Metadata` XML encoding
+- Official ISO 19139 XSD validation for the ISO export when the schema URLs are reachable
 - Basic XML well-formedness and high-level section validation
 - Streamlit downloads for XML and JSON summary
 
