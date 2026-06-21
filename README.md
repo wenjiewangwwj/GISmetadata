@@ -35,15 +35,6 @@ API keys are optional. The app works with `No AI / rule-based only` selected.
 
 Streamlit Community Cloud selects the Python version in the app's Advanced settings, not from `runtime.txt`. The dependency set is pinned to versions with Python 3.14 wheels, and using Python 3.12 or 3.13 in Advanced settings is also fine.
 
-## API Key Handling
-
-Do not hardcode API keys. Provide them through one of:
-
-- Streamlit sidebar password inputs
-- `.streamlit/secrets.toml`
-- Environment variables or `.env`
-
-The app does not write API keys to output files.
 
 ## Supported Uploads
 
